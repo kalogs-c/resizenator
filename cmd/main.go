@@ -1,57 +1,77 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	goimg "image"
 	"log"
-	"os"
 	"sync"
 
+	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
+	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/googleapis/google-cloudevents-go/cloud/storagedata"
+	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/kalogs-c/resizenator/gcs"
 	"github.com/kalogs-c/resizenator/image"
+	"github.com/kalogs-c/resizenator/semaphore"
 )
 
-func main() {
-	// Open the image file
-	file, err := os.Open("./destination/image.jpg")
-	if err != nil {
-		log.Fatalf("Failed to open image: %v", err)
-	}
-	defer file.Close()
-	// Decode the image
-	src, err := image.ReaderToImage(file)
-	if err != nil {
-		log.Fatalf("Failed to decode image: %v", err)
+func init() {
+	functions.CloudEvent("resizenator", Resize)
+}
+
+func Resize(ctx context.Context, e event.Event) error {
+	log.Printf("Received event -> ID: %s\n", e.ID())
+
+	var gcsData storagedata.StorageObjectData
+	if err := protojson.Unmarshal(e.Data(), &gcsData); err != nil {
+		return fmt.Errorf("failed to unmarshal data: %w\n", err)
 	}
 
-	// Calculate the desired width and height for resizing
+	filename := gcsData.GetName()
+	if is := image.IsImage(filename); !is {
+		log.Println("Image is not an image")
+		return nil
+	}
+
+	storage, err := gcs.NewStorage(ctx, gcsData.GetBucket())
+	if err != nil {
+		return fmt.Errorf("Error creating storage %w\n", err)
+	}
+
+	reader, err := storage.Read(filename)
+	if err != nil {
+		return fmt.Errorf("failed to read image: %w", err)
+	}
+
+	srcImg, err := image.ReaderToImage(reader)
+	if err != nil {
+		return fmt.Errorf("failed to decode image: %w", err)
+	}
+
 	desiredSizes := make([]image.ImageSize, 30)
-
+	imageChan := make(chan goimg.Image, 10)
 	wg := &sync.WaitGroup{}
 	wg.Add(len(desiredSizes))
 
-	destinationChan := make(chan goimg.Image, 10)
-
-	for i := range desiredSizes {
-		fmt.Println("Resizing image...")
-
-		size := image.ImageSize{
-			X: 100 * i,
-			Y: 100 * i,
-		}
-		go image.ResizeImageToChan(destinationChan, wg, src, size, "BiLinear")
+	for _, size := range desiredSizes {
+		fmt.Printf("Resizing image %s to %d x %d\n", filename, size.X, size.Y)
+		go image.ResizeImageToChan(imageChan, wg, srcImg, size, "BiLinear")
 	}
 
-	go image.ResizeMonitor(destinationChan, wg)
+	go image.ResizeMonitor(imageChan, wg)
 
-	for i := range destinationChan {
-		fmt.Println("Size: ", i.Bounds().Dx(), i.Bounds().Dy())
-		destinationFile, err := os.Create(
-			fmt.Sprintf("./destination/dest-%dx%d.jpg", i.Bounds().Dx(), i.Bounds().Dy()),
-		)
-		defer destinationFile.Close()
-		if err != nil {
-			log.Fatalf("Failed to create destination file: %v", err)
-		}
-		image.ImageToWriter(i, destinationFile, image.Jpeg)
+	uploadWg := &sync.WaitGroup{}
+	semaphore := semaphore.NewSemaphore(10)
+	for i := range imageChan {
+		uploadWg.Add(1)
+		semaphore.Acquire()
+		go storage.UploadImage(filename, i, uploadWg, semaphore)
 	}
+	uploadWg.Wait()
+
+	return nil
 }
+
+func main() {}

@@ -77,15 +77,15 @@ func resizeImage(
 }
 
 func ResizeImageToChan(
-	imageChan chan image.Image,
+	imageChan chan<- image.Image,
 	wg *sync.WaitGroup,
 	originalImage image.Image,
 	destinationImage ImageSize,
 	algorithm Algorithm,
 ) {
+	defer wg.Done()
 	imageChan <- resizeImage(originalImage, destinationImage, algorithm)
 	fmt.Println("Resizing image...")
-	wg.Done()
 }
 
 func ResizeMonitor(imageChan chan image.Image, wg *sync.WaitGroup) {
