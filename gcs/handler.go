@@ -17,6 +17,7 @@ import (
 )
 
 type Storage struct {
+	client *storage.Client
 	bucket *storage.BucketHandle
 	ctx    context.Context
 }
@@ -28,7 +29,7 @@ func NewStorage(ctx context.Context, bucketName string) (*Storage, error) {
 	}
 
 	bucket := client.Bucket(bucketName)
-	return &Storage{bucket: bucket, ctx: ctx}, nil
+	return &Storage{client: client, bucket: bucket, ctx: ctx}, nil
 }
 
 func (s *Storage) ListObjects() ([]string, error) {
@@ -89,13 +90,27 @@ func (s *Storage) UploadImage(
 	err := image.ImageToWriter(img, writer, image.GetImageFormat(filename))
 	if err != nil {
 		log.Fatalf("encoding image error: %v", err)
-		// wg.Done()
 	}
 	log.Printf("Uploading image %s to bucket\n", filename)
 
 	if err := writer.Close(); err != nil {
 		log.Fatalf("writer close error: %v", err)
-		// wg.Done()
 	}
 	log.Printf("Uploaded image %s to bucket\n", filename)
+}
+
+func (s *Storage) Delete(filename string) error {
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
+
+	err := s.bucket.Object(filename).Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Storage) Close() error {
+	return s.client.Close()
 }

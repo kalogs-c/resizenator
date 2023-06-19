@@ -1,4 +1,4 @@
-package main
+package resizenator
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	functions.CloudEvent("resizenator", Resize)
+	functions.CloudEvent("Resizenator", Resize)
 }
 
 func Resize(ctx context.Context, e event.Event) error {
@@ -27,6 +27,13 @@ func Resize(ctx context.Context, e event.Event) error {
 	var gcsData storagedata.StorageObjectData
 	if err := protojson.Unmarshal(e.Data(), &gcsData); err != nil {
 		return fmt.Errorf("failed to unmarshal data: %w\n", err)
+	}
+
+	if md, ok := gcsData.GetMetadata()["created-by"]; ok {
+		if md == "Resizenator" {
+			log.Println("Image is already resized")
+			return nil
+		}
 	}
 
 	filename := gcsData.GetName()
@@ -50,7 +57,7 @@ func Resize(ctx context.Context, e event.Event) error {
 		return fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	desiredSizes := make([]image.ImageSize, 30)
+	desiredSizes := make([]image.ImageSize, 4)
 	imageChan := make(chan goimg.Image, 255)
 	wg := &sync.WaitGroup{}
 	wg.Add(len(desiredSizes))
@@ -58,7 +65,8 @@ func Resize(ctx context.Context, e event.Event) error {
 	uploadWg.Add(len(desiredSizes))
 
 	go func() {
-		for _, size := range desiredSizes {
+		for i, size := range desiredSizes {
+			size = image.ImageSize{X: i * 300, Y: i * 300}
 			if size.X == 0 || size.Y == 0 {
 				wg.Done()
 				uploadWg.Done()
@@ -82,9 +90,10 @@ func Resize(ctx context.Context, e event.Event) error {
 		}
 	}()
 
-	log.Println("Waiting for uploads")
 	uploadWg.Wait()
-	log.Println("Done")
+
+	storage.Delete(filename)
+	storage.Close()
 
 	return nil
 }
