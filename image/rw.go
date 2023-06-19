@@ -7,14 +7,8 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-)
 
-type ImageFormat string
-
-const (
-	Jpeg ImageFormat = "jpeg"
-	Png  ImageFormat = "png"
-	Gif  ImageFormat = "gif"
+	"github.com/chai2010/webp"
 )
 
 func ReaderToImage(r io.Reader) (image.Image, error) {
@@ -33,6 +27,8 @@ func ImageToWriter(img image.Image, w io.Writer, format ImageFormat) error {
 		return png.Encode(w, img)
 	case "gif":
 		return gif.Encode(w, img, nil)
+	case "webp":
+		return webp.Encode(w, img, &webp.Options{Quality: 100, Lossless: true})
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}

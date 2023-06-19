@@ -1,10 +1,10 @@
 .PHONY: run
 run: ## Run the program
-	go run cmd/main.go
+	go run main.go
 
 .PHONY: run-race
 run-race: ## Run the program with race detector
-	go run -race cmd/main.go
+	go run -race main.go
 
 .PHONY: test
 test: ## Run the tests
@@ -12,4 +12,4 @@ test: ## Run the tests
 
 .PHONY: build
 build: ## Build the program
-	go build -o resizenator cmd/main.go
+	go build -o resizenator main.go

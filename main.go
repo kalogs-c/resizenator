@@ -51,27 +51,40 @@ func Resize(ctx context.Context, e event.Event) error {
 	}
 
 	desiredSizes := make([]image.ImageSize, 30)
-	imageChan := make(chan goimg.Image, 10)
+	imageChan := make(chan goimg.Image, 255)
 	wg := &sync.WaitGroup{}
 	wg.Add(len(desiredSizes))
+	uploadWg := &sync.WaitGroup{}
+	uploadWg.Add(len(desiredSizes))
 
-	for _, size := range desiredSizes {
-		fmt.Printf("Resizing image %s to %d x %d\n", filename, size.X, size.Y)
-		go image.ResizeImageToChan(imageChan, wg, srcImg, size, "BiLinear")
-	}
+	go func() {
+		for _, size := range desiredSizes {
+			if size.X == 0 || size.Y == 0 {
+				wg.Done()
+				uploadWg.Done()
+				continue
+			}
+			fmt.Printf("Resizing image %s to %d x %d\n", filename, size.X, size.Y)
+			go image.ResizeImageToChan(imageChan, wg, srcImg, size, "BiLinear")
+		}
+	}()
 
 	go image.ResizeMonitor(imageChan, wg)
 
-	uploadWg := &sync.WaitGroup{}
 	semaphore := semaphore.NewSemaphore(10)
-	for i := range imageChan {
-		uploadWg.Add(1)
-		semaphore.Acquire()
-		go storage.UploadImage(filename, i, uploadWg, semaphore)
-	}
+	go func() {
+		for i := range imageChan {
+			semaphore.Acquire()
+
+			size := i.Bounds()
+			imageName := fmt.Sprintf("%s/%dx%d-%s", filename, size.Dx(), size.Dy(), filename)
+			go storage.UploadImage(imageName, i, uploadWg, semaphore)
+		}
+	}()
+
+	log.Println("Waiting for uploads")
 	uploadWg.Wait()
+	log.Println("Done")
 
 	return nil
 }
-
-func main() {}
