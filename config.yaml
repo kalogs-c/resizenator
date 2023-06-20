@@ -24,7 +24,7 @@ algorithm: "CatmullRom"
 max_concurrency: 10
 
 # Delete the original image from bucket
-delete_after_resize: true
+delete_after_upload: true
 
 # The format that the image will be resized to.
 # If empty it will be the same as the original

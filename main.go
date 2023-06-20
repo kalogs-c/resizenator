@@ -1,4 +1,4 @@
-package main
+package resizenator
 
 import (
 	"context"
@@ -111,7 +111,7 @@ func Resize(ctx context.Context, e event.Event) error {
 
 	uploadWg.Wait()
 
-	if config.DeleteAfterResize {
+	if config.DeleteAfterUpload {
 		storage.Delete(filename)
 	}
 	storage.Close()

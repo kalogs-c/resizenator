@@ -13,7 +13,7 @@ type Config struct {
 	Sizes             []image.ImageSize `yaml:"sizes"`
 	Algorithm         image.Algorithm   `yaml:"algorithm"`
 	MaxConcurrency    int               `yaml:"max_concurrency"`
-	DeleteAfterResize bool              `yaml:"delete_after_resize"`
+	DeleteAfterUpload bool              `yaml:"delete_after_upload"`
 	TargetFormat      image.ImageFormat `yaml:"target_format"`
 }
 
