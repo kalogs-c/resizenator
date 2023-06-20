@@ -1,7 +1,5 @@
 package semaphore
 
-import "fmt"
-
 type Semaphore chan struct{}
 
 func NewSemaphore(maxConcurrencyAmount int) Semaphore {
@@ -12,10 +10,8 @@ func NewSemaphore(maxConcurrencyAmount int) Semaphore {
 
 func (s *Semaphore) Acquire() {
 	*s <- struct{}{}
-	fmt.Println("Acquire")
 }
 
 func (s *Semaphore) Release() {
 	<-*s
-	fmt.Println("Release")
 }

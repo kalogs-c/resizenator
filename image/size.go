@@ -3,8 +3,8 @@ package image
 import "image"
 
 type ImageSize struct {
-	X int
-	Y int
+	X int `yaml:"x"`
+	Y int `yaml:"y"`
 }
 
 func (s *ImageSize) GetScales(originalImageBounds image.Rectangle) float64 {

@@ -1,0 +1,36 @@
+# The prefix that will be added to the resized images.
+# It will be used to avoid infinite loops.
+prefix: "resize_"
+
+# The target sizes
+sizes: 
+  - x: 300
+    y: 300
+  - x: 200
+    y: 200
+  - x: 100
+    y: 100
+
+# The Interpolation algorithm used to resize the images.
+# Available algorithms:
+#   "BiLinear" - High quality but slow
+#   "NearestNeighbor" - Fast but low quality. Good for downscaling
+#   "CatmullRom" - Highest quality but slow
+#   "ApproxBiLinear" - A mixture of the nearest neighbor and bi-linear. Fast but medium quality
+algorithm: "CatmullRom"
+
+# Number of resizing doing at the same time.
+# Highest values means doing faster but consuming more memory and maybe crash your Function.
+max_concurrency: 10
+
+# Delete the original image from bucket
+delete_after_resize: true
+
+# The format that the image will be resized to.
+# If empty it will be the same as the original
+# Available formats:
+#    "webp"
+#    "jpg"
+#    "png"
+#    "gif"
+target_format: "webp"

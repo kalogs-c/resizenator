@@ -1,10 +1,11 @@
-package resizenator
+package main
 
 import (
 	"context"
 	"fmt"
 	goimg "image"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
@@ -12,6 +13,7 @@ import (
 	"github.com/googleapis/google-cloudevents-go/cloud/storagedata"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/kalogs-c/resizenator/config"
 	"github.com/kalogs-c/resizenator/gcs"
 	"github.com/kalogs-c/resizenator/image"
 	"github.com/kalogs-c/resizenator/semaphore"
@@ -29,16 +31,19 @@ func Resize(ctx context.Context, e event.Event) error {
 		return fmt.Errorf("failed to unmarshal data: %w\n", err)
 	}
 
-	if md, ok := gcsData.GetMetadata()["created-by"]; ok {
-		if md == "Resizenator" {
-			log.Println("Image is already resized")
-			return nil
-		}
-	}
-
 	filename := gcsData.GetName()
 	if is := image.IsImage(filename); !is {
 		log.Println("Image is not an image")
+		return nil
+	}
+
+	config, err := config.Load("config.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w\n", err)
+	}
+
+	if strings.Contains(filename, config.Prefix) {
+		log.Println("Image is already resized")
 		return nil
 	}
 
@@ -57,43 +62,70 @@ func Resize(ctx context.Context, e event.Event) error {
 		return fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	desiredSizes := make([]image.ImageSize, 4)
-	imageChan := make(chan goimg.Image, 255)
+	desiredSizes := config.Sizes
+	imageChan := make(chan goimg.Image, len(desiredSizes))
 	wg := &sync.WaitGroup{}
 	wg.Add(len(desiredSizes))
 	uploadWg := &sync.WaitGroup{}
 	uploadWg.Add(len(desiredSizes))
 
+	resizeSemaphore := semaphore.NewSemaphore(config.MaxConcurrency)
 	go func() {
-		for i, size := range desiredSizes {
-			size = image.ImageSize{X: i * 300, Y: i * 300}
+		for _, size := range desiredSizes {
+			resizeSemaphore.Acquire()
 			if size.X == 0 || size.Y == 0 {
 				wg.Done()
 				uploadWg.Done()
 				continue
 			}
-			fmt.Printf("Resizing image %s to %d x %d\n", filename, size.X, size.Y)
-			go image.ResizeImageToChan(imageChan, wg, srcImg, size, "BiLinear")
+			log.Printf("Resizing image %s to %d x %d\n", filename, size.X, size.Y)
+			go image.ResizeImageToChan(
+				imageChan,
+				resizeSemaphore,
+				wg,
+				srcImg,
+				size,
+				config.Algorithm,
+			)
 		}
 	}()
 
 	go image.ResizeMonitor(imageChan, wg)
 
-	semaphore := semaphore.NewSemaphore(10)
+	uploadSemaphore := semaphore.NewSemaphore(config.MaxConcurrency)
 	go func() {
 		for i := range imageChan {
-			semaphore.Acquire()
-
+			uploadSemaphore.Acquire()
 			size := i.Bounds()
-			imageName := fmt.Sprintf("%s/%dx%d-%s", filename, size.Dx(), size.Dy(), filename)
-			go storage.UploadImage(imageName, i, uploadWg, semaphore)
+			imageName := fmt.Sprintf(
+				"%s/%s%dx%d-%s",
+				filename,
+				config.Prefix,
+				size.Dx(),
+				size.Dy(),
+				filename,
+			)
+			go storage.UploadImage(imageName, i, uploadWg, uploadSemaphore, config.TargetFormat)
 		}
 	}()
 
 	uploadWg.Wait()
 
-	storage.Delete(filename)
+	if config.DeleteAfterResize {
+		storage.Delete(filename)
+	}
 	storage.Close()
 
 	return nil
+}
+
+func main() {
+	config, err := config.Load("config.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if config.TargetFormat == "" {
+		log.Printf("Config: %+v\n", config)
+	}
 }

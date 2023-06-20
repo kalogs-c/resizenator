@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"golang.org/x/image/draw"
+
+	"github.com/kalogs-c/resizenator/semaphore"
 )
 
 type Algorithm string
@@ -78,12 +80,14 @@ func resizeImage(
 
 func ResizeImageToChan(
 	imageChan chan<- image.Image,
+	semaphore semaphore.Semaphore,
 	wg *sync.WaitGroup,
 	originalImage image.Image,
 	destinationImage ImageSize,
 	algorithm Algorithm,
 ) {
 	imageChan <- resizeImage(originalImage, destinationImage, algorithm)
+	semaphore.Release()
 	wg.Done()
 }
 

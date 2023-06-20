@@ -77,6 +77,7 @@ func (s *Storage) UploadImage(
 	img goimg.Image,
 	wg *sync.WaitGroup,
 	semaphore semaphore.Semaphore,
+	targetFormat image.ImageFormat,
 ) {
 	defer func() {
 		wg.Done()
@@ -86,8 +87,12 @@ func (s *Storage) UploadImage(
 	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
 	defer cancel()
 
+	if targetFormat == "" {
+		targetFormat = image.GetImageFormat(filename)
+	}
+
 	writer := s.bucket.Object(filename).NewWriter(ctx)
-	err := image.ImageToWriter(img, writer, image.GetImageFormat(filename))
+	err := image.ImageToWriter(img, writer, targetFormat)
 	if err != nil {
 		log.Fatalf("encoding image error: %v", err)
 	}
